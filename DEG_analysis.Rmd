@@ -1,0 +1,182 @@
+---
+title: "DEG analysis"
+author: "Austin Huang"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("~/r stuff/STEMREM205")
+
+library(writexl)
+library(EnhancedVolcano)
+library(dplyr)
+library(Seurat)
+library(SeuratObject)
+library(ggplot2)
+```
+
+Reading in scanpy matrix and metadata
+```{r}
+# read in matrix, cell barcodes, and genes
+mtx <- ReadMtx(mtx = './data/scanpy_data/matrix.mtx', cells = './data/scanpy_data/barcodes.tsv', features = './data/scanpy_data/features.tsv')
+
+# generate Seurat object from matrix
+integrated <- CreateSeuratObject(mtx)
+
+# read in metadata
+celltype_metadata <- read.delim('./data/scanpy_data/metadata.tsv', header = F)
+batch_metadata <- read.delim('./data/scanpy_data/batch.tsv', header = F)
+
+# add metadata to Seurat object
+integrated <- AddMetaData(object = integrated,metadata = celltype_metadata$V1,col.name = 'celltype')
+integrated <- AddMetaData(integrated,batch_metadata$V1,col.name = 'batch')
+integrated$group_ID <- paste(integrated$batch,integrated$celltype,sep = '__') # for group comparison
+
+# renaming idents to be more concise
+integrated$group_ID <- gsub('townsend','T',integrated$group_ID)
+integrated$group_ID <- gsub('westfall','W',integrated$group_ID)
+integrated$group_ID <- gsub('JLE48_3','FCD_II',integrated$group_ID)
+integrated$group_ID <- gsub('JLE49_3','FCD_I',integrated$group_ID)
+integrated$group_ID <- gsub('JLE50_3','FCD_III',integrated$group_ID)
+integrated$group_ID <- gsub('JLE18','FCD_I1',integrated$group_ID)
+integrated$group_ID <- gsub('JLE33','FCD_I2',integrated$group_ID)
+integrated$group_ID <- gsub('NB1499','C1',integrated$group_ID)
+integrated$group_ID <- gsub('NB4327','C2',integrated$group_ID)
+```
+
+
+DEGs between two specific conditions
+```{r}
+# https://github.com/satijalab/seurat/issues/5127
+levels(factor(integrated$group_ID))
+Idents(integrated = integrated) <- integrated@meta.data$'group_ID'
+```
+
+```{r}
+# setting groups for comparisons
+# excitatory neurons
+name <- 'C_vs_FCDII_ExN'
+G1 <- c('W_C1__ExN1','W_C1__ExN2','W_C1__ExN3','W_C2__ExN1','W_C2__ExN2','W_C2__ExN3')
+G2 <- c('T_FCD_II__ExN1','T_FCD_II__ExN2','T_FCD_II__ExN3') 
+
+name <- 'C_vs_FCDIII_ExN'
+G1 <- c('W_C1__ExN1','W_C1__ExN2','W_C1__ExN3','W_C2__ExN1','W_C2__ExN2','W_C2__ExN3')
+G2 <- c('T_FCD_III__ExN1','T_FCD_III__ExN2','T_FCD_III__ExN3')
+
+name <- 'C_vs_FCDI_ExN'
+G1 <- c('W_C1__ExN1','W_C1__ExN2','W_C1__ExN3','W_C2__ExN1','W_C2__ExN2','W_C2__ExN3')
+G2 <- c('T_FCD_I__ExN1','T_FCD_I__ExN2','T_FCD_I__ExN3','W_FCD_I1__ExN1','W_FCD_I1__ExN2','W_FCD_I1__ExN3','W_FCD_I2__ExN1','W_FCD_I2__ExN2','W_FCD_I2__ExN3') 
+
+name <- 'FCDI_vs_II_ExN'
+G1 <- c('T_FCD_I__ExN1','T_FCD_I__ExN2','T_FCD_I__ExN3','W_FCD_I1__ExN1','W_FCD_I1__ExN2','W_FCD_I1__ExN3','W_FCD_I2__ExN1','W_FCD_I2__ExN2','W_FCD_I2__ExN3') 
+G2 <- c('T_FCD_II__ExN1','T_FCD_II__ExN2','T_FCD_II__ExN3')
+
+name <- 'FCDII_vs_III_ExN'
+G1 <- c('T_FCD_II__ExN1','T_FCD_II__ExN2','T_FCD_II__ExN3') 
+G2 <- c('T_FCD_III__ExN1','T_FCD_III__ExN2','T_FCD_III__ExN3')
+
+name <- 'FCDI_vs_III_ExN'
+G1 <- c('T_FCD_I__ExN1','T_FCD_I__ExN2','T_FCD_I__ExN3','W_FCD_I1__ExN1','W_FCD_I1__ExN2','W_FCD_I1__ExN3','W_FCD_I2__ExN1','W_FCD_I2__ExN2','W_FCD_I2__ExN3') 
+G2 <- c('T_FCD_III__ExN1','T_FCD_III__ExN2','T_FCD_III__ExN3')
+
+# oligodendrocytes
+name <- 'C_vs_FCDII_OD'
+G1 <- c('W_C1__OD','W_C2__OD')
+G2 <- c('T_FCD_II__OD')
+
+name <- 'C_vs_FCDI_OD'
+G1 <- c('W_C1__OD','W_C2__OD')
+G2 <- c('T_FCD_I__OD','W_FCD_I1__OD','W_FCD_I2__OD')
+
+name <- 'C_vs_FCDIII_OD'
+G1 <- c('W_C1__OD','W_C2__OD')
+G2 <- c('T_FCD_III__OD')
+
+name <- 'FCDI_vs_FCDII_OD'
+G1 <- c('T_FCD_I__OD','W_FCD_I1__OD','W_FCD_I2__OD')
+G2 <- c('T_FCD_II__OD')
+
+# microglia
+name <- 'C_vs_FCDII_MG'
+G1 <- c('W_C1__MG','W_C2__MG')
+G2 <- c('T_FCD_II__MG')
+
+name <- 'C_vs_FCDI_MG'
+G1 <- c('W_C1__MG','W_C2__MG')
+G2 <- c('T_FCD_I__MG','W_FCD_I1__MG','W_FCD_I2__MG') 
+
+name <- 'C_vs_FCDIII_MG'
+G1 <- c('W_C1__MG','W_C2__MG')
+G2 <- c('T_FCD_III__MG')
+
+name <- 'FCDI_vs_FCDII_MG'
+G1 <- c('T_FCD_I__MG','W_FCD_I1__MG','W_FCD_I2__MG') 
+G2 <- c('T_FCD_II__MG')
+
+# oligodendrocyte precursor cells (OPCs)
+name <- 'C_vs_FCDI_OPC'
+G1 <- c('W_C1__OPC','W_C2__OPC')
+G2 <- c('T_FCD_I__OPC')
+
+# find DEGs
+comp <- FindMarkers(integrated, ident.1 = G1, ident.2 = G2)
+comp$gene <- rownames(comp)
+
+# pos log2FC: 1 is upregulated relative to 2, 
+# neg log2FC: 1 is downregulated relative to 2
+```
+
+```{r}
+#excel list of DEGs
+write_xlsx(comp, paste0('./output/',name,'.xlsx'))
+```
+
+```{r}
+# https://github.com/satijalab/seurat/issues/205
+# .Machine$double.xmin = 2.225074e-308
+# Since there is a technical limit on how small of a number R can represent, set "0" values equal to the limit (2.225074e-308)
+
+for(i in 1:nrow(comp)){
+  if(comp[i,5] == 0){
+    comp[i,5] <- 2.225074e-308
+  }
+}
+```
+
+Volcano plots:
+```{r}
+# volcano plot with q-value (aka p-adj)
+
+plot <- EnhancedVolcano(comp,
+                lab = comp$gene,
+                x = 'avg_log2FC',
+                y = 'p_val_adj',
+                ylab = bquote(~-Log[10] ~ italic(P-adj)),
+                legendLabels = c("NS", expression(Log[2] ~ FC), "p-adj", expression(p - adj ~ and
+                                                                                      ~ log[2] ~ FC)),
+                title = name,
+                pCutoff = 0.05,
+                drawConnectors = T,
+                arrowheads = F,
+                maxoverlapsConnectors = Inf,
+                xlim = c(min(comp[['avg_log2FC']], na.rm = TRUE) - 0.2, max(comp[['avg_log2FC']], na.rm = TRUE) + 0.2), 
+                #xlim = c(-1.5,1.5),
+                ylim = c(0, max(-log10(comp[['p_val_adj']]))+5)
+)
+
+plot
+
+```
+
+```{r}
+# save plot as png
+png(paste0(name,'.png'),width = 750, height = 500)
+plot
+dev.off()
+```
+
